@@ -45,15 +45,19 @@ function get_swarm_id() {
 function getEnvJson() {
 
     local ENV_JSON=""
-    while read LINE 
+    while read LINE || [ -n "$LINE" ]
     do
-        # echo "Line: $LINE"
-        NAME=$(echo $LINE | cut -d "=" -f1)
-        VALUE=$(echo $LINE | cut -d "=" -f2-)
+        # Skip empty lines and comments
+        [[ -z "$LINE" ]] && continue
+        [[ "$LINE" =~ ^[[:space:]]*# ]] && continue
+        [[ ! "$LINE" =~ = ]] && continue
+        
+        NAME=$(echo "$LINE" | cut -d "=" -f1)
+        VALUE=$(echo "$LINE" | cut -d "=" -f2-)
         VALUE_JSON=$(node -e 'console.log(JSON.stringify(process.argv[1].replace(/^"(.*)"$/g,"$1")))' "$VALUE")
 
         ENV_JSON="$ENV_JSON,{\"name\":\"$NAME\", \"value\": $VALUE_JSON}"
-    done < $1
+    done < "$1"
 
     echo '['${ENV_JSON:1}']'
 }
