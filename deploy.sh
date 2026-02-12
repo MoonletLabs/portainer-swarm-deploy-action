@@ -112,7 +112,8 @@ then
     echo "POST $URL"
     echo $PAYLOAD | jq
     echo "===============";
-    api_call_json_body POST $URL "$PAYLOAD" | jq
+    RESPONSE=$(api_call_json_body POST $URL "$PAYLOAD")
+    echo "$RESPONSE" | jq
 
 else
     # update stack
@@ -124,5 +125,17 @@ else
     echo "PUT $URL"
     echo $PAYLOAD | jq
     echo "===============";
-    api_call_json_body PUT $URL "$PAYLOAD" | jq
-fi  
+    RESPONSE=$(api_call_json_body PUT $URL "$PAYLOAD")
+    echo "$RESPONSE" | jq
+fi
+
+# Check for error in response
+if echo "$RESPONSE" | jq -e '.message' > /dev/null 2>&1; then
+    echo ""
+    echo "ERROR: Portainer API returned an error:"
+    echo "$RESPONSE" | jq -r '.message'
+    exit 1
+fi
+
+echo ""
+echo "Stack deployed successfully!"  
