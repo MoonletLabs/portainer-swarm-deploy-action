@@ -19,10 +19,11 @@ function api_call() {
 # $1 - method (POST/GET/PUT...)
 # $2 - api path
 # $3 - body
-# Sets global HTTP_STATUS and returns body
+# Outputs: HTTP_STATUS_CODE<newline>BODY
 function api_call_json_body() {
     local TMPFILE=$(mktemp)
-    HTTP_STATUS=$(curl -s -w "%{http_code}" -o "$TMPFILE" --request $1 --url ${PORTAINER_ENDPOINT}${2} --header "x-api-key: $PORTAINER_API_KEY" --header "content-type: application/json" --data "$3")
+    local STATUS=$(curl -s -w "%{http_code}" -o "$TMPFILE" --request $1 --url ${PORTAINER_ENDPOINT}${2} --header "x-api-key: $PORTAINER_API_KEY" --header "content-type: application/json" --data "$3")
+    echo "$STATUS"
     cat "$TMPFILE"
     rm -f "$TMPFILE"
 }
@@ -116,7 +117,9 @@ then
     echo "$PAYLOAD" | jq .
     echo "===============";
     echo ""
-    RESPONSE=$(api_call_json_body POST $URL "$PAYLOAD")
+    API_RESULT=$(api_call_json_body POST $URL "$PAYLOAD")
+    HTTP_STATUS=$(echo "$API_RESULT" | head -n 1)
+    RESPONSE=$(echo "$API_RESULT" | tail -n +2)
     echo "=== RESPONSE ==="
     echo "HTTP Status: $HTTP_STATUS"
     echo "Body:"
@@ -134,7 +137,9 @@ else
     echo "$PAYLOAD" | jq .
     echo "===============";
     echo ""
-    RESPONSE=$(api_call_json_body PUT $URL "$PAYLOAD")
+    API_RESULT=$(api_call_json_body PUT $URL "$PAYLOAD")
+    HTTP_STATUS=$(echo "$API_RESULT" | head -n 1)
+    RESPONSE=$(echo "$API_RESULT" | tail -n +2)
     echo "=== RESPONSE ==="
     echo "HTTP Status: $HTTP_STATUS"
     echo "Body:"
@@ -143,7 +148,14 @@ else
 fi
 
 # Check HTTP status code
-if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
+if [ -z "$HTTP_STATUS" ]; then
+    echo ""
+    echo "ERROR: Failed to get HTTP status from Portainer API (curl may have failed)"
+    echo "Response: $RESPONSE"
+    exit 1
+fi
+
+if [ "$HTTP_STATUS" -lt 200 ] 2>/dev/null || [ "$HTTP_STATUS" -ge 300 ] 2>/dev/null; then
     echo ""
     echo "ERROR: Portainer API returned HTTP $HTTP_STATUS"
     if echo "$RESPONSE" | jq -e '.message' > /dev/null 2>&1; then
