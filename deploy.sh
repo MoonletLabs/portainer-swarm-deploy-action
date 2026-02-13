@@ -110,7 +110,8 @@ then
     # create stack
     echo "It seems $STACK_NAME stack was not deployed yet on $ENDPOINT cluster. Creating it...";
 
-    URL="/api/stacks?type=1&method=string&endpointId=$ENDPOINT_ID"
+    # type=1 means swarm stack, method=string means inline stack file content
+    URL="/api/stacks/create/swarm/string?endpointId=$ENDPOINT_ID"
     PAYLOAD='{"env": '$(getEnvJson $STACK_ENV_FILE)',"fromAppTemplate":false, "name": "'$STACK_NAME'","swarmID": '$SWARM_ID', "stackFileContent": '${STACK_FILE_STRING}'}'
     echo "=== PAYLOAD ===";
     echo "POST $URL"
