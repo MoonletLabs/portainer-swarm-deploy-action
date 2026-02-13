@@ -6,6 +6,7 @@ set -o pipefail
 ENDPOINT_ID=
 STACK_ID=
 SWARM_ID=
+HTTP_STATUS=
 
 ###########
 
@@ -18,10 +19,12 @@ function api_call() {
 # $1 - method (POST/GET/PUT...)
 # $2 - api path
 # $3 - body
+# Sets global HTTP_STATUS and returns body
 function api_call_json_body() {
-    # echo "$1 $2 $3"
-    local RES=$(curl -s --request $1 --url ${PORTAINER_ENDPOINT}${2} --header "x-api-key: $PORTAINER_API_KEY" --header "content-type: application/json" --data "$3")
-    echo $RES
+    local TMPFILE=$(mktemp)
+    HTTP_STATUS=$(curl -s -w "%{http_code}" -o "$TMPFILE" --request $1 --url ${PORTAINER_ENDPOINT}${2} --header "x-api-key: $PORTAINER_API_KEY" --header "content-type: application/json" --data "$3")
+    cat "$TMPFILE"
+    rm -f "$TMPFILE"
 }
 
 # $1 - endpoint name
@@ -110,10 +113,15 @@ then
     PAYLOAD='{"env": '$(getEnvJson $STACK_ENV_FILE)',"fromAppTemplate":false, "name": "'$STACK_NAME'","swarmID": '$SWARM_ID', "stackFileContent": '${STACK_FILE_STRING}'}'
     echo "=== PAYLOAD ===";
     echo "POST $URL"
-    echo $PAYLOAD | jq
+    echo "$PAYLOAD" | jq .
     echo "===============";
+    echo ""
     RESPONSE=$(api_call_json_body POST $URL "$PAYLOAD")
-    echo "$RESPONSE" | jq
+    echo "=== RESPONSE ==="
+    echo "HTTP Status: $HTTP_STATUS"
+    echo "Body:"
+    echo "$RESPONSE" | jq . 2>/dev/null || echo "$RESPONSE"
+    echo "================"
 
 else
     # update stack
@@ -123,18 +131,39 @@ else
     PAYLOAD='{"env": '$(getEnvJson $STACK_ENV_FILE)',"prune": true,"pullImage": true,"stackFileContent":'${STACK_FILE_STRING}'}'
     echo "=== PAYLOAD ===";
     echo "PUT $URL"
-    echo $PAYLOAD | jq
+    echo "$PAYLOAD" | jq .
     echo "===============";
+    echo ""
     RESPONSE=$(api_call_json_body PUT $URL "$PAYLOAD")
-    echo "$RESPONSE" | jq
+    echo "=== RESPONSE ==="
+    echo "HTTP Status: $HTTP_STATUS"
+    echo "Body:"
+    echo "$RESPONSE" | jq . 2>/dev/null || echo "$RESPONSE"
+    echo "================"
 fi
 
-# Check for error in response
-if echo "$RESPONSE" | jq -e '.message' > /dev/null 2>&1; then
+# Check HTTP status code
+if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
     echo ""
-    echo "ERROR: Portainer API returned an error:"
-    echo "$RESPONSE" | jq -r '.message'
+    echo "ERROR: Portainer API returned HTTP $HTTP_STATUS"
+    if echo "$RESPONSE" | jq -e '.message' > /dev/null 2>&1; then
+        echo "Message: $(echo "$RESPONSE" | jq -r '.message')"
+    fi
+    if echo "$RESPONSE" | jq -e '.details' > /dev/null 2>&1; then
+        echo "Details: $(echo "$RESPONSE" | jq -r '.details')"
+    fi
     exit 1
+fi
+
+# Check for error in response body (some errors return 200 with error message)
+if echo "$RESPONSE" | jq -e '.message' > /dev/null 2>&1; then
+    # Check if it's actually an error (has err or error field, or message without Id)
+    if echo "$RESPONSE" | jq -e '.err // .error' > /dev/null 2>&1 || ! echo "$RESPONSE" | jq -e '.Id' > /dev/null 2>&1; then
+        echo ""
+        echo "ERROR: Portainer API returned an error:"
+        echo "$RESPONSE" | jq -r '.message'
+        exit 1
+    fi
 fi
 
 echo ""
